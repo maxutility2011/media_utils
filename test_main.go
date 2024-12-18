@@ -5,7 +5,7 @@ import (
 	"flag"
 	"os"
 	"io/ioutil"
-	"media_utils/mutils"
+	"github.com/maxutility2011/media_utils/mutils"
 )
 
 func readSegment(path string) ([]byte, error) {
