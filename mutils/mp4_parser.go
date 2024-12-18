@@ -38,6 +38,13 @@ func get_uint64(p uint64, d []byte) uint64 {
 	return uint64(d[p]) << 56 + uint64(d[p+1]) << 48 + uint64(d[p+2]) << 40 + uint64(d[p+3]) << 32 + uint64(d[p+4]) << 24 + uint64(d[p+5]) << 16 + uint64(d[p+6]) << 8 + uint64(d[p+7])
 }
 
+func set_uint32(p uint32, d []byte, v uint32) {
+	d[p] = byte(v >> 24)
+	d[p+1] = byte((v - (uint32(d[p]) << 24)) >> 16)
+	d[p+2] = byte((v - (uint32(d[p]) << 24) - (uint32(d[p+1]) << 16)) >> 8)
+	d[p+3] = byte(v - (uint32(d[p]) << 24) - (uint32(d[p+1]) << 16) - (uint32(d[p+2]) << 8))
+}
+
 func mp4_fourcc(a byte, b byte, c byte, d byte) uint32 {
 	return uint32(a) << 24 + uint32(b) << 16 + uint32(c) << 8 + uint32(d)
 }
@@ -228,14 +235,93 @@ func GetTfdt(seg_data []byte) (Tfdt_box, error) {
 	tfdt.Header.Box_size = tfdt_box_size
 	tfdt_version := get_uint8(tfdt_start_offset + 8, seg_data)
 	if tfdt_version == 0 {
+		if (bytes_total - tfdt_start_offset - 12 < 4) {
+			return tfdt, errors.New("incomplete_tfdt_baseMediaDecodeTime")
+		}
+
 		tfdt.Header.Version = 0
 		tfdt.BaseMediaDecodeTime_v0 = get_uint32(tfdt_start_offset + 12, seg_data)
 	} else if tfdt_version == 1 {
+		if (bytes_total - tfdt_start_offset - 12 < 8) {
+			return tfdt, errors.New("incomplete_tfdt_baseMediaDecodeTime")
+		}
+
 		tfdt.Header.Version = 1
 		tfdt.BaseMediaDecodeTime_v1 = get_uint64(uint64(tfdt_start_offset + 12), seg_data)
 	}
 
 	return tfdt, nil
+}
+
+func SetTfdtUint32(seg_data []byte, baseMediaDecodeTime uint32) error {
+	//seg_data := *segment_data
+	bytes_total := uint32(len(seg_data))
+	bytes_remaining := bytes_total
+	var box_size uint32
+	var box_type uint32
+
+	if bytes_remaining > 8 {
+		box_size = get_uint32(0, seg_data)
+		box_type = get_uint32(4, seg_data)
+	} else {
+		return errors.New("Failed_to_find_tfdt")
+	}
+
+	for box_type != mp4_fourcc('m', 'o', 'o', 'f') { 
+		if (bytes_remaining < box_size + 8 || box_size == 0) {
+			return errors.New("Failed_to_find_moof")
+		}
+
+		bytes_remaining -= box_size
+		box_size = get_uint32(bytes_total - bytes_remaining, seg_data)
+		box_type = get_uint32(bytes_total - bytes_remaining + 4, seg_data)
+	}
+
+	moof_start_offset := bytes_total - bytes_remaining
+	// skip MOOF payload
+	box_size = get_uint32(moof_start_offset + 8, seg_data)
+	box_type = get_uint32(moof_start_offset + 12, seg_data)
+	bytes_remaining -= 8 
+
+	for box_type != mp4_fourcc('t', 'r', 'a', 'f') { 
+		if (bytes_remaining < box_size + 8 || box_size == 0) {
+			return errors.New("Failed_to_find_traf")
+		}
+
+		bytes_remaining -= box_size
+		box_size = get_uint32(bytes_total - bytes_remaining, seg_data)
+		box_type = get_uint32(bytes_total - bytes_remaining + 4, seg_data)
+	}
+
+	traf_start_offset := bytes_total - bytes_remaining
+	// skip TRAF payload
+	box_size = get_uint32(traf_start_offset + 8, seg_data)
+	box_type = get_uint32(traf_start_offset + 12, seg_data)
+	bytes_remaining -= 8 
+
+	for box_type != mp4_fourcc('t', 'f', 'd', 't') { 
+		if (bytes_remaining < box_size + 8 || box_size == 0) {
+			return errors.New("Failed_to_find_tfdt")
+		}
+
+		bytes_remaining -= box_size
+		box_size = get_uint32(bytes_total - bytes_remaining, seg_data)
+		box_type = get_uint32(bytes_total - bytes_remaining + 4, seg_data)
+	}
+
+	tfdt_start_offset := bytes_total - bytes_remaining
+	tfdt_version := get_uint8(tfdt_start_offset + 8, seg_data)
+	if tfdt_version == 0 {
+		if (bytes_total - tfdt_start_offset - 12 < 4) {
+			return errors.New("incomplete_tfdt_baseMediaDecodeTime")
+		}
+
+		set_uint32(tfdt_start_offset + 12, seg_data, baseMediaDecodeTime)
+	} else if tfdt_version == 1 {
+		return errors.New("setting_uint64_baseMediaDecodeTime_not_supported")
+	}
+
+	return nil
 }
 
 func GetAvc1(seg_data []byte) (Avc1_box, error) {

@@ -40,8 +40,8 @@ func main() {
 	tfdt, _ = mutils.GetTfdt(seg_data)
 	fmt.Println("TFDT box size:", tfdt.Header.Box_size, "TFDT version:", tfdt.Header.Version, "BaseMediaDecodeTime V0:", tfdt.BaseMediaDecodeTime_v0, "BaseMediaDecodeTime V1:", tfdt.BaseMediaDecodeTime_v1)
 
-	//mutils.getFtyp(seg_data)
-	//mutils.getMoov(seg_data)
-	//mutils.getMoof(seg_data)
-	//mutils.getMdat(seg_data)
+	mutils.SetTfdtUint32(seg_data, 0)
+
+	tfdt, _ = mutils.GetTfdt(seg_data)
+	fmt.Println("TFDT box size:", tfdt.Header.Box_size, "TFDT version:", tfdt.Header.Version, "BaseMediaDecodeTime V0:", tfdt.BaseMediaDecodeTime_v0, "BaseMediaDecodeTime V1:", tfdt.BaseMediaDecodeTime_v1)
 }
