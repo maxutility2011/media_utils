@@ -32,9 +32,13 @@ func main() {
 	fmt.Println("Read", len(seg_data), "bytes")
 
 	//mutils.GetFtyp(seg_data)
-	var avc1 mutils.Avc1_box
-	avc1, _ = mutils.GetAvc1(seg_data)
-	fmt.Println("Video height:", avc1.Video_height, "Video width:", avc1.Video_width)
+	//var avc1 mutils.Avc1_box
+	//avc1, _ = mutils.GetAvc1(seg_data)
+	//fmt.Println("Video height:", avc1.Video_height, "Video width:", avc1.Video_width)
+
+	var tfdt mutils.Tfdt_box
+	tfdt, _ = mutils.GetTfdt(seg_data)
+	fmt.Println("TFDT box size:", tfdt.Header.Box_size, "TFDT version:", tfdt.Header.Version, "BaseMediaDecodeTime V0:", tfdt.BaseMediaDecodeTime_v0, "BaseMediaDecodeTime V1:", tfdt.BaseMediaDecodeTime_v1)
 
 	//mutils.getFtyp(seg_data)
 	//mutils.getMoov(seg_data)
