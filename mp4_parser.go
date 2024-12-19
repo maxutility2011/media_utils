@@ -1,4 +1,4 @@
-package mutils
+package media_utils
 
 import (
 	"fmt"

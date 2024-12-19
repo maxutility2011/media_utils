@@ -5,7 +5,7 @@ import (
 	"flag"
 	"os"
 	"io/ioutil"
-	"github.com/maxutility2011/media_utils/mutils"
+	"github.com/maxutility2011/media_utils"
 )
 
 func readSegment(path string) ([]byte, error) {
@@ -36,12 +36,12 @@ func main() {
 	//avc1, _ = mutils.GetAvc1(seg_data)
 	//fmt.Println("Video height:", avc1.Video_height, "Video width:", avc1.Video_width)
 
-	var tfdt mutils.Tfdt_box
-	tfdt, _ = mutils.GetTfdt(seg_data)
+	var tfdt media_utils.Tfdt_box
+	tfdt, _ = media_utils.GetTfdt(seg_data)
 	fmt.Println("TFDT box size:", tfdt.Header.Box_size, "TFDT version:", tfdt.Header.Version, "BaseMediaDecodeTime V0:", tfdt.BaseMediaDecodeTime_v0, "BaseMediaDecodeTime V1:", tfdt.BaseMediaDecodeTime_v1)
 
-	mutils.SetTfdtUint32(seg_data, 0)
+	media_utils.SetTfdtUint32(seg_data, 0)
 
-	tfdt, _ = mutils.GetTfdt(seg_data)
+	tfdt, _ = media_utils.GetTfdt(seg_data)
 	fmt.Println("TFDT box size:", tfdt.Header.Box_size, "TFDT version:", tfdt.Header.Version, "BaseMediaDecodeTime V0:", tfdt.BaseMediaDecodeTime_v0, "BaseMediaDecodeTime V1:", tfdt.BaseMediaDecodeTime_v1)
 }
