@@ -44,4 +44,7 @@ func main() {
 
 	tfdt, _ = media_utils.GetTfdt(seg_data)
 	fmt.Println("TFDT box size:", tfdt.Header.Box_size, "TFDT version:", tfdt.Header.Version, "BaseMediaDecodeTime V0:", tfdt.BaseMediaDecodeTime_v0, "BaseMediaDecodeTime V1:", tfdt.BaseMediaDecodeTime_v1)
+
+	sidx, _ := media_utils.GetSidx(seg_data)
+	fmt.Println("SIDX timescale:", sidx.Timescale)
 }

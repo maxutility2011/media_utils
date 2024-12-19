@@ -22,6 +22,10 @@ type Tfdt_box struct {
 	BaseMediaDecodeTime_v1 uint64
 }
 
+type Sidx_box struct {
+	Timescale uint32
+}
+
 func get_uint8(p uint32, d []byte) uint8 {
 	return d[p]
 }
@@ -322,6 +326,44 @@ func SetTfdtUint32(seg_data []byte, baseMediaDecodeTime uint32) error {
 	}
 
 	return nil
+}
+
+func GetSidx(seg_data []byte) (Sidx_box, error) {
+	var sidx_box Sidx_box
+	bytes_total := uint32(len(seg_data))
+	bytes_remaining := bytes_total
+	var box_size uint32
+	var box_type uint32
+
+	if bytes_remaining > 8 {
+		box_size = get_uint32(0, seg_data)
+		box_type = get_uint32(4, seg_data)
+	} else {
+		fmt.Println("Error: invalid segment data")
+		return sidx_box, errors.New("Failed_to_find_sidx")
+	}
+
+	for box_type != mp4_fourcc('s', 'i', 'd', 'x') { 
+		if (bytes_remaining < box_size + 8 || box_size == 0) {
+			fmt.Println("SIDX box not found")
+			return sidx_box, errors.New("Failed_to_find_sidx")
+		}
+
+		bytes_remaining -= box_size
+		box_size = get_uint32(bytes_total - bytes_remaining, seg_data)
+		box_type = get_uint32(bytes_total - bytes_remaining + 4, seg_data)
+	}
+
+	sidx_start_offset := bytes_total - bytes_remaining
+	
+	// SIDX fields preceding "timescale":
+	// - 4 bytes box size
+	// - 4 bytes box type
+	// - 1 byte version
+	// - 3 bytes flag
+	// - 4 bytes reference_ID
+	sidx_box.Timescale = get_uint32(sidx_start_offset + 16, seg_data)
+	return sidx_box, nil
 }
 
 func GetAvc1(seg_data []byte) (Avc1_box, error) {
