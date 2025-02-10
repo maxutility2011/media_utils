@@ -139,7 +139,7 @@ var masterPlaylistBaseUrl string
 
 func main() {
 	playlistPtr := flag.String("playlist", "", "HLS playlist URL")
-	wdPtr := flag.String("wd", "", "Working directory")
+	wdPtr := flag.String("output", "", "Output folder")
 	flag.Parse()
 
 	if *playlistPtr == "" {
