@@ -50,8 +50,8 @@ func downloadObject(urlStr string, dstFolder string) ([]byte, string, error) {
 		return data, local_path, err
 	}
 	
-	local_path = working_directory + "/" + dstFolder + "/" + filepath.Base(parsedURL.Path)
-	err = os.WriteFile(local_path, data, os.FileMode(0644)) // 0644: Read/write for owner, read for others
+	local_path = dstFolder + "/" + filepath.Base(parsedURL.Path)
+	err = os.WriteFile(local_path, data, 0644) // 0644: Read/write for owner, read for others
 
 	if err != nil {
 		fmt.Printf("Error: Failed to write to file: %s. Code: %v\n", local_path, err)
@@ -106,9 +106,8 @@ func parseMasterPlaylistData(data []byte) error {
 			varPlaylistFilename := line[posLastSlash+1:] 
 			posDot := strings.LastIndex(varPlaylistFilename, ".")
 			varPlaylistFilenameNoExtension := varPlaylistFilename[:posDot]
-			fmt.Printf("varPlaylistFilenameNoExtension: %s\n", varPlaylistFilenameNoExtension)
 
-			variantSubfolder := working_directory + "/" + varPlaylistFilenameNoExtension + "/"
+			variantSubfolder := varPlaylistFilenameNoExtension + "/"
 			_, err = os.Stat(variantSubfolder)
 			if errors.Is(err, os.ErrNotExist) {
 				fmt.Printf("Path %s does not exist. Creating it...\n", variantSubfolder)
