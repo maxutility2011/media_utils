@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"errors"
 	"os"
 	"strings"
 	"flag"
@@ -22,7 +23,7 @@ func isValidHTTPURL(urlStr string) bool {
 	return u.Scheme == "http" || u.Scheme == "https"
 }
 
-func downloadObject(urlStr string) ([]byte, string, error) {
+func downloadObject(urlStr string, dstFolder string) ([]byte, string, error) {
 	var data []byte
 	var local_path string
 	var resp *http.Response
@@ -49,7 +50,7 @@ func downloadObject(urlStr string) ([]byte, string, error) {
 		return data, local_path, err
 	}
 	
-	local_path = working_directory + "/" + filepath.Base(parsedURL.Path)
+	local_path = working_directory + "/" + dstFolder + "/" + filepath.Base(parsedURL.Path)
 	err = os.WriteFile(local_path, data, os.FileMode(0644)) // 0644: Read/write for owner, read for others
 
 	if err != nil {
@@ -60,7 +61,7 @@ func downloadObject(urlStr string) ([]byte, string, error) {
     return data, local_path, err
 }
 
-func parseVarPlaylistData(varPlaylistUrl string, data []byte) error {
+func parseVarPlaylistData(varPlaylistUrl string, data []byte, dstFolder string) error {
 	var err error
 
 	parsedURL, err := url.Parse(varPlaylistUrl)
@@ -79,12 +80,10 @@ func parseVarPlaylistData(varPlaylistUrl string, data []byte) error {
 		
 		if strings.Contains(prevLine, "#EXTINF") {
 			segmentUrlStr := varPlaylistBaseUrl + "/" + line
-			//var segData []byte
 			var segPath string
-			_, segPath, err = downloadObject(segmentUrlStr)
+			_, segPath, err = downloadObject(segmentUrlStr, dstFolder)
 
 			fmt.Printf("Segment url: %s, path: %s\n", segmentUrlStr, segPath)
-			//parseVarPlaylistData(varData)
 		}
 
 		prevLine = line
@@ -102,12 +101,30 @@ func parseMasterPlaylistData(data []byte) error {
 		
 		if strings.Contains(prevLine, "#EXT-X-STREAM-INF") {
 			variantUrlStr := masterPlaylistBaseUrl + "/" + line
+
+			posLastSlash := strings.LastIndex(line, "/")
+			varPlaylistFilename := line[posLastSlash+1:] 
+			posDot := strings.LastIndex(varPlaylistFilename, ".")
+			varPlaylistFilenameNoExtension := varPlaylistFilename[:posDot]
+			fmt.Printf("varPlaylistFilenameNoExtension: %s\n", varPlaylistFilenameNoExtension)
+
+			variantSubfolder := working_directory + "/" + varPlaylistFilenameNoExtension + "/"
+			_, err = os.Stat(variantSubfolder)
+			if errors.Is(err, os.ErrNotExist) {
+				fmt.Printf("Path %s does not exist. Creating it...\n", variantSubfolder)
+				err = os.Mkdir(variantSubfolder, 0777)
+				if err != nil {
+					fmt.Println("Failed to mkdir: ", variantSubfolder, " Error: ", err)
+					return err
+				}
+			}
+
 			var varData []byte
 			var varPath string
-			varData, varPath, err = downloadObject(variantUrlStr)
+			varData, varPath, err = downloadObject(variantUrlStr, variantSubfolder)
 
 			fmt.Printf("Variant playlist url: %s, path: %s\n", variantUrlStr, varPath)
-			parseVarPlaylistData(variantUrlStr, varData)
+			parseVarPlaylistData(variantUrlStr, varData, variantSubfolder)
 		}
 
 		prevLine = line
@@ -159,7 +176,7 @@ func main() {
 
 	var downloadedData []byte
 	var downloadedPath string
-	downloadedData, downloadedPath, err = downloadObject(*playlistPtr)
+	downloadedData, downloadedPath, err = downloadObject(*playlistPtr, working_directory)
 	if err != nil {
 		fmt.Printf("Error: Failed to download playlist %s. Code: %v\n", *playlistPtr, err)
 		os.Exit(1)
@@ -175,6 +192,6 @@ func main() {
 	if !isVariantPlaylist {
 		parseMasterPlaylistData(downloadedData)
 	} else {
-		parseVarPlaylistData(*playlistPtr, downloadedData)
+		parseVarPlaylistData(*playlistPtr, downloadedData, working_directory)
 	}
 }
