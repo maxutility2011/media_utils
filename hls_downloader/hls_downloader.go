@@ -256,11 +256,13 @@ var isVariantPlaylist bool = false
 var masterPlaylistBaseUrl string
 var renditionTable = make(map[string]Rendition)
 var downloadSegments bool = false
+var outputRenditionInfo bool = false
 
 func main() {
 	playlistPtr := flag.String("playlist", "", "HLS playlist URL")
 	wdPtr := flag.String("output", "", "Output folder")
 	downloadSegmentsPtr := flag.String("downloadSegments", "0", "Whether or not to download segments")
+	renditionInfoFlag := flag.String("renditionInfo", "0", "Whether or not to output rendition info")
 	flag.Parse()
 
 	if *playlistPtr == "" {
@@ -284,6 +286,12 @@ func main() {
 		downloadSegments = false
 	} else {
 		downloadSegments = true
+	}
+
+	if *renditionInfoFlag == "0" {
+		outputRenditionInfo = false
+	} else {
+		outputRenditionInfo = true
 	}
 
 	if !isValidHTTPURL(*playlistPtr) {
@@ -317,7 +325,9 @@ func main() {
 
 	if !isVariantPlaylist {
 		parseMasterPlaylistData(downloadedData)
-		dumpRenditionInfo()
+		if outputRenditionInfo {
+			dumpRenditionInfo()
+		}
 	} else {
 		parseVarPlaylistData(*playlistPtr, downloadedData, working_directory)
 	}
