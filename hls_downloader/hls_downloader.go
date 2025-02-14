@@ -109,10 +109,32 @@ func parseVarPlaylistData(varPlaylistUrl string, data []byte, dstFolder string) 
 		
 		if strings.Contains(prevLine, "#EXTINF") {
 			segmentUrlStr := varPlaylistBaseUrl + "/" + line
-			var segPath string
-			_, segPath, err = downloadObject(segmentUrlStr, dstFolder)
+			downloadObject(segmentUrlStr, dstFolder)
 
-			fmt.Printf("Segment url: %s, path: %s\n", segmentUrlStr, segPath)
+			parts := strings.Split(line, "/")
+			segFilename := parts[len(parts)-1]
+			parts = parts[:len(parts)-1]
+
+			var newFolder string = dstFolder
+			for _, p := range parts {
+				newFolder = newFolder + "/" + p
+				
+				_, err = os.Stat(newFolder)
+				if errors.Is(err, os.ErrNotExist) {
+					fmt.Printf("Path %s does not exist. Creating it...\n", newFolder)
+					err = os.Mkdir(newFolder, 0777)
+					if err != nil {
+						fmt.Printf("Failed to mkdir: %s. Error: %v\n", newFolder, err)
+						return err
+					}
+				}
+			}
+
+			src := dstFolder + "/" + segFilename // Assuming variant playlist and the segments are in the same folder.
+			dest := newFolder + "/" + segFilename
+
+			err = os.Rename(src, dest)
+			fmt.Printf("Segment url: %s saved to: %s\n", segmentUrlStr, dest)
 		}
 
 		prevLine = line
@@ -180,7 +202,7 @@ func parseRenditionInfo(line string) (string, Rendition) {
 		}
 	}
 
-	renditionId = "video_" + rendition.Avg_bandwidth
+	renditionId = "video_" + rendition.Peak_bandwidth
 	return renditionId, rendition
 }
 
@@ -201,14 +223,6 @@ func parseMasterPlaylistData(data []byte) error {
 
 		if strings.Contains(prevLine, "#EXT-X-STREAM-INF") {
 			variantUrlStr := masterPlaylistBaseUrl + "/" + line
-
-			/*
-			posLastSlash := strings.LastIndex(line, "/")
-			varPlaylistFilename := line[posLastSlash+1:] 
-			posDot := strings.LastIndex(varPlaylistFilename, ".")
-			varPlaylistFilenameNoExtension := varPlaylistFilename[:posDot]
-			variantSubfolder := varPlaylistFilenameNoExtension + "/"
-			*/
 
 			_, err = os.Stat(variantSubfolder)
 			if errors.Is(err, os.ErrNotExist) {
@@ -257,12 +271,15 @@ var masterPlaylistBaseUrl string
 var renditionTable = make(map[string]Rendition)
 var downloadSegments bool = false
 var outputRenditionInfo bool = false
+var keepSegmentStructure bool = true
 
 func main() {
 	playlistPtr := flag.String("playlist", "", "HLS playlist URL")
-	wdPtr := flag.String("output", "", "Output folder")
-	downloadSegmentsPtr := flag.String("downloadSegments", "0", "Whether or not to download segments")
-	renditionInfoFlag := flag.String("renditionInfo", "0", "Whether or not to output rendition info")
+	wdPtr := flag.String("output", "", "Output folder (default to the working directory)")
+	downloadSegmentsPtr := flag.String("downloadSegments", "0", "Whether or not to download segments, or parse the rendition info only")
+	renditionInfoFlag := flag.String("renditionInfo", "1", "Whether or not to output rendition info")
+	// If set to 0, media segments will be downloaded all under the rendition subfolder. Filename conflicts are possible.  
+	keepSegmentStructureFlag := flag.String("keepSegmentStructure", "1", "Whether or not to keep the original segment structure")
 	flag.Parse()
 
 	if *playlistPtr == "" {
@@ -292,6 +309,12 @@ func main() {
 		outputRenditionInfo = false
 	} else {
 		outputRenditionInfo = true
+	}
+
+	if *keepSegmentStructureFlag == "0" {
+		keepSegmentStructure = false
+	} else {
+		keepSegmentStructure = true
 	}
 
 	if !isValidHTTPURL(*playlistPtr) {
