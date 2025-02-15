@@ -32,6 +32,7 @@ type Media struct {
 	Uri string
 	Group_id string
 	Language string
+	Channels string
 	Name string
 	Default string
 	Auto_select string
@@ -107,9 +108,27 @@ func parseVarPlaylistData(varPlaylistUrl string, data []byte, dstFolder string) 
 	for scanner.Scan() {
 		line := scanner.Text()
 		
+		if strings.Contains(line, "#EXT-X-MAP") {
+			leftQuote := strings.Index(line, "\"")
+			rightQuote := strings.LastIndex(line, "\"")
+			mapSegmentFileName := line[leftQuote+1 : rightQuote]
+			mapSegmentUrl := varPlaylistBaseUrl + "/" + mapSegmentFileName
+			fmt.Printf("Map segment URL: %s\n", mapSegmentUrl)
+
+			_, _, err = downloadObject(mapSegmentUrl, dstFolder)
+			if err != nil {
+				fmt.Printf("Fail to download map segment: %s. Error: %v\n", mapSegmentUrl, err)
+			}
+
+			continue
+		}
+
 		if strings.Contains(prevLine, "#EXTINF") {
 			segmentUrlStr := varPlaylistBaseUrl + "/" + line
-			downloadObject(segmentUrlStr, dstFolder)
+			_, _, err = downloadObject(segmentUrlStr, dstFolder)
+			if err != nil {
+				fmt.Printf("Fail to download segment: %s. Error: %v\n", segmentUrlStr, err)
+			}
 
 			parts := strings.Split(line, "/")
 			segFilename := parts[len(parts)-1]
@@ -141,6 +160,183 @@ func parseVarPlaylistData(varPlaylistUrl string, data []byte, dstFolder string) 
 	}
 
 	return err
+}
+
+func parseMediaPlaylistData(mediaPlaylistUrl string, data []byte, dstFolder string) error {
+	var err error
+	if !downloadSegments {
+		fmt.Println("Flag downloadSegments not set. Don't download segments\n")
+		return nil
+	}
+
+	parsedURL, err := url.Parse(mediaPlaylistUrl)
+	if err != nil {
+		fmt.Printf("Error: Failed to parse variant HLS playlist URL: %s\n", mediaPlaylistUrl)
+		return err
+	}
+
+	mediaPlaylistBaseUrl := parsedURL.Scheme + "://" + parsedURL.Host + filepath.Dir(parsedURL.Path)
+	fmt.Printf("mediaPlaylistBaseUrl: %s\n", mediaPlaylistBaseUrl)
+
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	var prevLine string
+	for scanner.Scan() {
+		line := scanner.Text()
+		
+		if strings.Contains(line, "#EXT-X-MAP") {
+			leftQuote := strings.Index(line, "\"")
+			rightQuote := strings.LastIndex(line, "\"")
+			mapSegmentFileName := line[leftQuote+1 : rightQuote]
+			mapSegmentUrl := mediaPlaylistBaseUrl + "/" + mapSegmentFileName
+			fmt.Printf("Map segment URL: %s\n", mapSegmentUrl)
+
+			_, _, err = downloadObject(mapSegmentUrl, dstFolder)
+			if err != nil {
+				fmt.Printf("Fail to download map segment: %s. Error: %v\n", mapSegmentUrl, err)
+			}
+
+			continue
+		}
+
+		if strings.Contains(prevLine, "#EXTINF") {
+			if strings.Contains(line, "#") {
+				continue
+			}
+
+			segmentUrlStr := mediaPlaylistBaseUrl + "/" + line
+			_, _, err = downloadObject(segmentUrlStr, dstFolder)
+			if err != nil {
+				fmt.Printf("Fail to download audio/subtitles segment: %s. Error: %v\n", segmentUrlStr, err)
+			}
+
+			parts := strings.Split(line, "/")
+			segFilename := parts[len(parts)-1]
+			parts = parts[:len(parts)-1]
+
+			var newFolder string = dstFolder
+			for _, p := range parts {
+				newFolder = newFolder + "/" + p
+				
+				_, err = os.Stat(newFolder)
+				if errors.Is(err, os.ErrNotExist) {
+					fmt.Printf("Path %s does not exist. Creating it...\n", newFolder)
+					err = os.Mkdir(newFolder, 0777)
+					if err != nil {
+						fmt.Printf("Failed to mkdir: %s. Error: %v\n", newFolder, err)
+						return err
+					}
+				}
+			}
+
+			src := dstFolder + "/" + segFilename // Assuming variant playlist and the segments are in the same folder.
+			dest := newFolder + "/" + segFilename
+
+			err = os.Rename(src, dest)
+			fmt.Printf("Segment url: %s saved to: %s\n", segmentUrlStr, dest)
+		}
+
+		prevLine = line
+	}
+
+	return err
+}
+
+func parseMediaInfo(line string) (string, Media) {
+	var mediaTrack Media
+	var mediaTrackId string
+
+	posColon := strings.LastIndex(line, ":")
+	prevEqual := posColon
+	prevComma := posColon
+	var key string
+	var val string
+	var i int
+	for i=posColon; i<len(line); i++ {
+		if line[i] == ',' {
+			val = line[prevEqual+1 : i]
+
+			if key == "TYPE" {
+				mediaTrack.Type = val
+				fmt.Printf("Media type: %s\n", val)
+			} else if key == "GROUP-ID" {
+				mediaTrack.Group_id = val
+				fmt.Printf("Group_id: %s\n", val)
+			} else if key == "NAME" {
+				mediaTrack.Name = val
+				fmt.Printf("Name: %s\n", val)
+			} else if key == "LANGUAGE" {
+				mediaTrack.Language = val
+				fmt.Printf("Language: %s\n", val)
+			} else if key == "AUTOSELECT" {
+				mediaTrack.Auto_select = val
+				fmt.Printf("Auto_select: %s\n", val)
+			} else if key == "DEFAULT" {
+				mediaTrack.Default = val
+				fmt.Printf("Default: %s\n", val)
+			} else if key == "CHANNELS" {
+				mediaTrack.Channels = val
+				fmt.Printf("Channels: %s\n", val)
+			} else if key == "URI" {
+				mediaTrack.Uri = val[1 : len(val)-1]
+				fmt.Printf("Uri: %s\n", val)
+			} else if key == "FORCED" {
+				mediaTrack.Forced = val
+				fmt.Printf("Forced: %s\n", val)
+			} else if key == "INSTREAM-ID" {
+				mediaTrack.Instream_id = val
+				fmt.Printf("Instream_id: %s\n", val)
+			}
+
+			prevComma = i
+		} else if line[i] == '=' {
+			key = line[prevComma+1 : i]
+			fmt.Printf("Key: %s\n", key)
+			prevEqual = i
+		}
+	}
+
+	val = line[prevEqual+1 : i]
+	if key == "TYPE" {
+		mediaTrack.Type = val
+		fmt.Printf("Media type: %s\n", val)
+	} else if key == "GROUP-ID" {
+		mediaTrack.Group_id = val
+		fmt.Printf("Group_id: %s\n", val)
+	} else if key == "NAME" {
+		mediaTrack.Name = val
+		fmt.Printf("Name: %s\n", val)
+	} else if key == "LANGUAGE" {
+		mediaTrack.Language = val
+		fmt.Printf("Language: %s\n", val)
+	} else if key == "AUTOSELECT" {
+		mediaTrack.Auto_select = val
+		fmt.Printf("Auto_select: %s\n", val)
+	} else if key == "DEFAULT" {
+		mediaTrack.Default = val
+		fmt.Printf("Default: %s\n", val)
+	} else if key == "CHANNELS" {
+		mediaTrack.Channels = val
+		fmt.Printf("Channels: %s\n", val)
+	} else if key == "URI" {
+		mediaTrack.Uri = val[1 : len(val)-1]
+		fmt.Printf("Uri: %s\n", val)
+	} else if key == "FORCED" {
+		mediaTrack.Forced = val
+		fmt.Printf("Forced: %s\n", val)
+	} else if key == "INSTREAM-ID" {
+		mediaTrack.Instream_id = val
+		fmt.Printf("Instream_id: %s\n", val)
+	}
+	
+	//mediaTrack.Uri = val[1 : len(val)-1] // Assuming URI is always the last attribute.
+
+	//fmt.Printf("mediaTrack.Uri: %s\n", mediaTrack.Uri)
+	if mediaTrack.Uri != "" { 
+		mediaTrackId = mediaTrack.Uri[ : strings.Index(mediaTrack.Uri, "/")]
+		fmt.Printf("mediaTrackId: %s\n", mediaTrackId)
+	}
+
+	return mediaTrackId, mediaTrack
 }
 
 func parseRenditionInfo(line string) (string, Rendition) {
@@ -198,7 +394,6 @@ func parseRenditionInfo(line string) (string, Rendition) {
 		} else if line[i] == '=' {
 			prevEqual = i
 			key = line[prevComma+1 : i]
-			//fmt.Printf("Key: %s\n", key)
 		}
 	}
 
@@ -210,36 +405,79 @@ func parseMasterPlaylistData(data []byte) error {
 	var err error
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	var prevLine string
-	var variantSubfolder string
+	var mediaSubfolder string
 	for scanner.Scan() {
 		line := scanner.Text()
 		
 		if strings.Contains(line, "#EXT-X-STREAM-INF") {
 			rid, rend := parseRenditionInfo(line)
 			renditionTable[rid] = rend
-			variantSubfolder = rid
-			fmt.Printf("variantSubfolder: %s\n", variantSubfolder)
 		}
 
 		if strings.Contains(prevLine, "#EXT-X-STREAM-INF") {
 			variantUrlStr := masterPlaylistBaseUrl + "/" + line
+			mediaSubfolder = line[ : strings.Index(line, "/")]
+			fmt.Printf("mediaSubfolder %s\n", mediaSubfolder)
 
-			_, err = os.Stat(variantSubfolder)
+			_, err = os.Stat(mediaSubfolder)
 			if errors.Is(err, os.ErrNotExist) {
-				fmt.Printf("Path %s does not exist. Creating it...\n", variantSubfolder)
-				err = os.Mkdir(variantSubfolder, 0777)
+				fmt.Printf("Path %s does not exist. Creating it...\n", mediaSubfolder)
+				err = os.Mkdir(mediaSubfolder, 0777)
 				if err != nil {
-					fmt.Println("Failed to mkdir: ", variantSubfolder, " Error: ", err)
+					fmt.Println("Failed to mkdir: ", mediaSubfolder, " Error: ", err)
 					return err
 				}
 			}
 
 			var varData []byte
 			var varPath string
-			varData, varPath, err = downloadObject(variantUrlStr, variantSubfolder)
+			varData, varPath, err = downloadObject(variantUrlStr, mediaSubfolder)
 
-			fmt.Printf("Variant playlist url: %s, path: %s\n", variantUrlStr, varPath)
-			parseVarPlaylistData(variantUrlStr, varData, variantSubfolder)
+			if err == nil {
+				fmt.Printf("Variant playlist: %s downloaded to path: %s\n", variantUrlStr, varPath)
+				parseVarPlaylistData(variantUrlStr, varData, mediaSubfolder)
+			} else {
+				fmt.Printf("Fail to download video variant playlist: %s. Error: %v\n", variantUrlStr, err)
+			}
+		}
+
+		if strings.Contains(line, "#EXT-X-MEDIA") {
+			mid, mediaTrack := parseMediaInfo(line)
+			if mid == "" {
+				continue
+			}
+
+			mediaTable[mid] = mediaTrack
+			mediaSubfolder = mid
+
+			if mediaTrack.Type == "AUDIO" {
+				fmt.Printf("Audio track subfolder path: %s\n", mediaSubfolder)
+			} else if  mediaTrack.Type == "SUBTITLES" {
+				fmt.Printf("Subtitles track subfolder path: %s\n", mediaSubfolder)
+			}
+
+			mediaUrlStr := masterPlaylistBaseUrl + "/" + mediaTrack.Uri
+
+			_, err = os.Stat(mediaSubfolder)
+			if errors.Is(err, os.ErrNotExist) {
+				fmt.Printf("Path %s does not exist. Creating it...\n", mediaSubfolder)
+				err = os.Mkdir(mediaSubfolder, 0777)
+				if err != nil {
+					fmt.Println("Failed to mkdir: ", working_directory + "/" + mediaSubfolder, " Error: ", err)
+					return err
+				}
+			}
+
+			var mediaPlaylistData []byte
+			var mediaPath string
+			mediaPlaylistData, mediaPath, err = downloadObject(mediaUrlStr, mediaSubfolder)
+
+			if err == nil {
+				fmt.Printf("Media playlist: %s downloaded to path: %s\n", mediaUrlStr, mediaPath)
+				parseMediaPlaylistData(mediaUrlStr, mediaPlaylistData, mediaSubfolder)
+			} else {
+				fmt.Printf("Fail to download audio/subtitles playlist: %s. Error: %v\n", mediaUrlStr, err)
+			}
 		}
 
 		prevLine = line
@@ -269,6 +507,7 @@ var input_playlist_local_path string
 var isVariantPlaylist bool = false
 var masterPlaylistBaseUrl string
 var renditionTable = make(map[string]Rendition)
+var mediaTable = make(map[string]Media)
 var downloadSegments bool = false
 var outputRenditionInfo bool = false
 var keepSegmentStructure bool = true
